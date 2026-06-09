@@ -7,9 +7,12 @@ use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
+use Nawasara\Alerting\Facades\Alerter;
+use Nawasara\Alerting\Models\AlertRule;
 use Nawasara\DatabaseMonitor\Jobs\CheckDatabaseAlertsJob;
 use Nawasara\DatabaseMonitor\Jobs\SyncDatabaseInventoryJob;
 use Nawasara\DatabaseMonitor\Jobs\SyncDatabaseMetricsJob;
+use Nawasara\DatabaseMonitor\Services\AlertEvaluator;
 use Nawasara\DatabaseMonitor\Services\MysqlConnection;
 use Nawasara\DatabaseMonitor\Services\MysqlInspector;
 use Symfony\Component\Finder\Finder;
@@ -28,6 +31,41 @@ class DatabaseMonitorServiceProvider extends ServiceProvider
 
         $this->registerLivewire();
         $this->registerSchedule();
+        $this->registerAlertRules();
+    }
+
+    /**
+     * Register the rules that AlertEvaluator fires against. Using
+     * registerOrReplaceRule so reloading the provider during a hot deploy
+     * doesn't throw RuleAlreadyRegistered.
+     */
+    protected function registerAlertRules(): void
+    {
+        Alerter::registerOrReplaceRule(AlertRule::make([
+            'key' => AlertEvaluator::RULE_SERVER_UNREACHABLE,
+            'severity' => 'critical',
+            'category' => 'infrastructure',
+            'description' => 'MySQL server tidak reachable',
+            'subject_template' => '[{severity}] {context.label} tidak reachable: {context.status}',
+        ]));
+
+        Alerter::registerOrReplaceRule(AlertRule::make([
+            'key' => AlertEvaluator::RULE_CONNECTIONS_HIGH,
+            'severity' => 'warning',
+            'category' => 'capacity',
+            'cooldown_minutes' => (int) config('nawasara-database-monitor.alerts.cooldown_minutes', 30),
+            'description' => 'Threads_connected mendekati max_connections',
+            'subject_template' => '[{severity}] {context.label} koneksi tinggi: {context.threads_connected}/{context.max_connections} ({context.pct}%)',
+        ]));
+
+        Alerter::registerOrReplaceRule(AlertRule::make([
+            'key' => AlertEvaluator::RULE_ABORTED_HIGH,
+            'severity' => 'warning',
+            'category' => 'capacity',
+            'cooldown_minutes' => (int) config('nawasara-database-monitor.alerts.cooldown_minutes', 30),
+            'description' => 'Aborted_connects melonjak dalam interval terakhir',
+            'subject_template' => '[{severity}] {context.label} aborted_connects +{context.delta} (threshold {context.threshold})',
+        ]));
     }
 
     /**

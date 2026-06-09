@@ -37,6 +37,7 @@
         "nawasara/sync": "*",
         "nawasara/vault": "*",
         "nawasara/notification": "*",
+        "nawasara/alerting": "*",
         "nawasara/auth-primitives": "*",
         "livewire/livewire": "^3.0"
     },
