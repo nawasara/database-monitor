@@ -46,6 +46,7 @@ return [
         'workspace' => 'database',
         'label' => 'Database',
         'icon' => 'lucide-database',
+        'group' => 'Observability',
         'url' => '',
         'permission' => 'database-monitor.view',
         'submenu' => $submenu,
