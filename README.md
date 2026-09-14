@@ -3,17 +3,17 @@
 MySQL/MariaDB inventory, capacity, performance, and alert monitoring for the
 [Nawasara](https://github.com/nawasara) superapp framework.
 
-Scoped to **one central MySQL server** (the Kominfo deployment baseline as of
-2026-05-25) but the schema stays multi-server capable.
+Scoped to one central MySQL server (the Kominfo deployment baseline as of
+2026-05-25), but the schema stays multi-server capable.
 
 ## Phases
 
 | Phase | Scope | Status |
 |---|---|---|
-| A | Inventory + uptime | scaffolding |
+| A | Inventory plus uptime | scaffolding |
 | B | Capacity (DB size, top tables, growth) | planned |
 | C | Performance (processlist, slow query auto-detect, global status) | planned |
-| ~~D~~ | ~~Backup + replication~~ | DROPPED — no replication, no standard backup tool yet |
+| ~~D~~ | ~~Backup plus replication~~ | dropped, no replication and no standard backup tool yet |
 | E | Alerts via `nawasara/notification` | planned |
 | F | Administration (CREATE/DROP DB, manage MySQL users) | planned, separate PR |
 
@@ -47,7 +47,7 @@ SHOW GRANTS FOR 'nawasara_monitor'@'%';
 -- GRANT SELECT, PROCESS, REPLICATION CLIENT, SHOW DATABASES, SHOW VIEW ON *.* TO `nawasara_monitor`@`%`
 ```
 
-The user is **read-only by design** — no `INSERT`, `UPDATE`, `DELETE`,
+The user is read-only by design, with no `INSERT`, `UPDATE`, `DELETE`,
 `CREATE`, `DROP`, or `GRANT` privileges. Phase F administration uses a
 separate, higher-privilege user (created when that phase ships).
 
@@ -55,11 +55,11 @@ separate, higher-privilege user (created when that phase ships).
 
 Open **Nawasara → Pengaturan → Vault → Database Monitor** and fill:
 
-- **Host** — hostname or IP of the MySQL server
-- **Port** — usually `3306`
-- **Database** — leave blank (we connect server-wide, not per-DB)
-- **Username** — `nawasara_monitor`
-- **Password** — the strong password from step 1
+- **Host**: hostname or IP of the MySQL server
+- **Port**: usually `3306`
+- **Database**: leave blank (we connect server-wide, not per-DB)
+- **Username**: `nawasara_monitor`
+- **Password**: the strong password from step 1
 
 Click **Test Connection** to verify.
 
@@ -78,16 +78,16 @@ This creates the `database-monitor.*` permissions and grants them to the
 |---|---|
 | `SELECT ON *.*` | Reads `information_schema` (sizes, table list), `performance_schema` (status, processlist), and `mysql.slow_log` (slow query, when enabled) |
 | `PROCESS` | Required for `SHOW PROCESSLIST` to see all sessions, not just the monitor user's own |
-| `REPLICATION CLIENT` | `SHOW REPLICA STATUS` — granted defensively so replication monitoring works the day replication is enabled, without re-granting |
+| `REPLICATION CLIENT` | `SHOW REPLICA STATUS`. Granted defensively so replication monitoring works the day replication is enabled, without re-granting |
 | `SHOW DATABASES` | Lists all schemas regardless of user permissions |
 | `SHOW VIEW` | Reads view definitions for sizing |
 
-## Runtime connection — no `.env` leakage
+## Runtime connection, no `.env` leakage
 
 The package never registers `DATABASE_MONITOR_*` env vars or pushes anything
 into `config/database.php`. Connection config is built at runtime from Vault
-each time a job or page needs it, used, then **purged** to release the LAN
-socket. Defence-in-depth: every session runs with
+each time a job or page needs it, used, then purged to release the LAN
+socket. As defense in depth, every session runs with
 `SET SESSION TRANSACTION READ ONLY` regardless of the granted privileges.
 
 ## License
