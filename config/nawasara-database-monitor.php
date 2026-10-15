@@ -70,6 +70,16 @@ return [
     */
     'admin' => [
         'enabled' => env('DB_MONITOR_ADMIN_ENABLED', false),
+
+        // Database TAMBAHAN yang tidak boleh di-DROP / GRANT / REVOKE dari
+        // UI, dipisah koma di .env. Skema sistem (mysql, sys,
+        // information_schema, performance_schema) selalu dilindungi lewat
+        // MysqlAdmin::SYSTEM_SCHEMAS dan tidak perlu ditulis di sini (audit
+        // keamanan 15 Oktober 2026, S5).
+        'protected_databases' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env('DB_MONITOR_PROTECTED_DATABASES', '')),
+        ))),
     ],
 
     /*

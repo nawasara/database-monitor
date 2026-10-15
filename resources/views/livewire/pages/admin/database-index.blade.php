@@ -55,10 +55,12 @@
                             </td>
                             <td class="px-4 py-2.5 text-right">
                                 @can('database-monitor.database.drop')
+                                    {{-- Id, bukan nama (audit keamanan 15 Oktober 2026, S5/S7):
+                                         server memetakan id ke database user miliknya sendiri. --}}
                                     <x-nawasara-ui::icon-button
                                         icon="trash-2"
                                         tooltip="Hapus database"
-                                        wire:click="openDrop('{{ $db->name }}')" />
+                                        wire:click="openDrop({{ (int) $db->id }})" />
                                 @endcan
                             </td>
                         </tr>

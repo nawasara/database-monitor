@@ -3,6 +3,7 @@
 namespace Nawasara\DatabaseMonitor\Livewire\Admin;
 
 use Livewire\Attributes\Computed;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Nawasara\AuthPrimitives\Attributes\RequiresSudo;
 use Nawasara\AuthPrimitives\Traits\WithSudo;
@@ -35,6 +36,13 @@ class DatabaseIndex extends Component
     public string $createCollation = 'utf8mb4_unicode_ci';
 
     // -- Drop confirm --
+    //
+    // #[Locked] (audit keamanan 15 Oktober 2026, S5): hanya diisi openDrop()
+    // setelah memastikan namanya database USER yang tercatat di server ini.
+    // Tanpa kunci, peramban dapat mengisi `mysql` langsung lalu memanggil
+    // confirmDrop(), dan ketik-ulang nama tidak menolong karena kolom
+    // konfirmasinya pun dikirim peramban.
+    #[Locked]
     public ?string $dropTarget = null;
 
     public string $dropConfirmName = '';
@@ -122,11 +130,54 @@ class DatabaseIndex extends Component
         }
     }
 
-    public function openDrop(string $name): void
+    /**
+     * Menerima id baris inventori, bukan nama. Nama database berasal dari
+     * SHOW DATABASES server yang dipantau, dan aplikasi OPD bebas memberi
+     * nama; menaruhnya di dalam `wire:click="openDrop('...')"` membuatnya
+     * dievaluasi sebagai JavaScript (audit keamanan 15 Oktober 2026, S7).
+     * Id juga memaksa target berasal dari daftar database user server ini.
+     */
+    public function openDrop(int $id): void
     {
-        $this->dropTarget = $name;
+        $this->authorize('database-monitor.database.drop');
+
+        $database = $this->userDatabase($id);
+
+        if (! $database) {
+            $this->dispatch('toast', ['type' => 'error', 'message' => 'Database tidak ditemukan di inventori server ini.']);
+
+            return;
+        }
+
+        $this->dropTarget = $database->name;
         $this->dropConfirmName = '';
         $this->dispatch('modal-open:db-monitor-drop');
+    }
+
+    /** Baris inventori database USER milik server ini, atau null. */
+    protected function userDatabase(int $id): ?DbDatabase
+    {
+        $server = $this->server;
+
+        if (! $server) {
+            return null;
+        }
+
+        $database = $server->databases()
+            ->where('kind', DbDatabase::KIND_USER)
+            ->whereKey($id)
+            ->first();
+
+        // Inventori menandai `kind` dari config system_databases, yang
+        // dapat diubah. Daftar tetap MysqlAdmin tetap diperiksa.
+        if ($database && MysqlAdmin::isProtectedSchema(
+            $database->name,
+            (array) config('nawasara-database-monitor.admin.protected_databases', []),
+        )) {
+            return null;
+        }
+
+        return $database;
     }
 
     public function closeDrop(): void
@@ -153,6 +204,21 @@ class DatabaseIndex extends Component
 
         if ($this->dropConfirmName !== $this->dropTarget) {
             $this->addError('dropConfirmName', 'Ketik ulang nama database sama persis untuk konfirmasi.');
+            return;
+        }
+
+        // Diperiksa ulang saat eksekusi, bukan hanya saat modal dibuka:
+        // database dapat berubah status di antara keduanya (S5).
+        $stillUser = $this->server
+            && $this->server->databases()
+                ->where('kind', DbDatabase::KIND_USER)
+                ->where('name', $this->dropTarget)
+                ->exists();
+
+        if (! $stillUser) {
+            $this->dispatch('toast', ['type' => 'error', 'message' => 'Database tidak ditemukan di inventori server ini.']);
+            $this->closeDrop();
+
             return;
         }
 

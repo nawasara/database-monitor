@@ -178,10 +178,13 @@
                                     {{ $database->last_synced_at?->diffForHumans() ?? '—' }}
                                 </td>
                                 <td class="px-4 py-2.5 text-right">
+                                    {{-- Id, bukan nama: nama database dari server yang dipantau
+                                         di dalam wire:click dievaluasi sebagai JavaScript
+                                         (audit keamanan 15 Oktober 2026, S7). --}}
                                     <x-nawasara-ui::icon-button
                                         icon="layers"
                                         tooltip="Lihat tabel terbesar"
-                                        wire:click="openDetail('{{ $database->name }}')" />
+                                        wire:click="openDetail({{ (int) $database->id }})" />
                                 </td>
                             </tr>
                         @empty

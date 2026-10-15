@@ -2,10 +2,14 @@
 
 namespace Nawasara\DatabaseMonitor\Livewire\Admin;
 
+use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Nawasara\AuthPrimitives\Attributes\RequiresSudo;
 use Nawasara\AuthPrimitives\Traits\WithSudo;
+use Nawasara\DatabaseMonitor\Models\DbDatabase;
+use Nawasara\DatabaseMonitor\Models\DbServer;
 use Nawasara\DatabaseMonitor\Services\MysqlAdmin;
 
 /**
@@ -37,8 +41,13 @@ class UserIndex extends Component
     public array $grantPrivileges = ['SELECT'];
 
     // -- Drop confirm --
+    //
+    // #[Locked] (audit keamanan 15 Oktober 2026): hanya diisi openDrop()
+    // setelah memastikan pasangan user@host benar-benar ada di server.
+    #[Locked]
     public ?string $dropTargetUser = null;
 
+    #[Locked]
     public ?string $dropTargetHost = null;
 
     public string $dropConfirmUser = '';
@@ -148,11 +157,21 @@ class UserIndex extends Component
     {
         $this->authorize('database-monitor.user.manage');
 
+        // grantDatabase diketik bebas, jadi dicocokkan dengan database USER
+        // yang tercatat di inventori server ini. Regex saja meloloskan
+        // `mysql`, dan GRANT pada `mysql` sama dengan hak mengubah tabel
+        // akun (audit keamanan 15 Oktober 2026, S5). MysqlAdmin::grant()
+        // juga menolaknya; yang di sini memberi pesan yang jelas di form.
         $this->validate([
             'grantUser' => 'required|string|regex:/^[A-Za-z0-9_]+$/',
             'grantHost' => 'required|string',
-            'grantDatabase' => 'required|string|regex:/^[A-Za-z0-9_]+$/',
+            'grantDatabase' => [
+                'required', 'string', 'regex:/^[A-Za-z0-9_]+$/',
+                Rule::in($this->grantableDatabases()),
+            ],
             'grantPrivileges' => 'required|array|min:1',
+        ], [
+            'grantDatabase.in' => 'Database tidak dikenal di server ini. Database sistem tidak dapat dipilih; database yang baru dibuat perlu disinkronkan dulu.',
         ]);
 
         $admin = app(MysqlAdmin::class);
@@ -191,8 +210,46 @@ class UserIndex extends Component
         }
     }
 
+    /**
+     * Nama database USER di server utama yang boleh menjadi sasaran GRANT.
+     *
+     * @return list<string>
+     */
+    protected function grantableDatabases(): array
+    {
+        $server = DbServer::where('slug', DbServer::SLUG_DEFAULT)->first();
+
+        if (! $server) {
+            return [];
+        }
+
+        $extra = (array) config('nawasara-database-monitor.admin.protected_databases', []);
+
+        return $server->databases()
+            ->where('kind', DbDatabase::KIND_USER)
+            ->pluck('name')
+            ->reject(fn ($name) => MysqlAdmin::isProtectedSchema((string) $name, $extra))
+            ->values()
+            ->all();
+    }
+
     public function openDrop(string $user, string $host): void
     {
+        $this->authorize('database-monitor.user.manage');
+
+        // Pasangan dari peramban hanya diterima bila memang ada di daftar
+        // akun server; target yang terkunci tidak berguna bila pengisinya
+        // menerima apa saja.
+        $exists = collect($this->users)->contains(
+            fn ($u) => $u['user'] === $user && $u['host'] === $host,
+        );
+
+        if (! $exists) {
+            $this->dispatch('toast', ['type' => 'error', 'message' => 'User tidak ditemukan di server ini.']);
+
+            return;
+        }
+
         $this->dropTargetUser = $user;
         $this->dropTargetHost = $host;
         $this->dropConfirmUser = '';

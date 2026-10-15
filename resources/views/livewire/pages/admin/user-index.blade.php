@@ -67,10 +67,13 @@
                             <td class="px-4 py-2.5 text-right">
                                 @can('database-monitor.user.manage')
                                     @if (! in_array($u['user'], ['root', 'mysql.sys', 'mysql.session', 'mysql.infoschema']))
+                                        {{-- Js::from, bukan echo Blade di dalam kutip: isi wire:click
+                                             dievaluasi sebagai JavaScript, dan escape HTML tidak
+                                             menutup kutip JS (audit keamanan 15 Oktober 2026, S7). --}}
                                         <x-nawasara-ui::icon-button
                                             icon="trash-2"
                                             tooltip="Hapus user"
-                                            wire:click="openDrop('{{ $u['user'] }}', '{{ $u['host'] }}')" />
+                                            wire:click="openDrop({{ \Illuminate\Support\Js::from($u['user']) }}, {{ \Illuminate\Support\Js::from($u['host']) }})" />
                                     @endif
                                 @endcan
                             </td>

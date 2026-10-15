@@ -127,7 +127,56 @@ class MysqlAdmin
     public function dropDatabase(string $name): void
     {
         $name = $this->sanitiseIdentifier($name);
+        $this->assertNotProtectedSchema($name);
+
         $this->connection()->statement("DROP DATABASE `{$name}`");
+    }
+
+    /**
+     * Skema yang TIDAK pernah boleh disentuh DROP / GRANT / REVOKE dari UI.
+     *
+     * Audit keamanan 15 Oktober 2026, temuan S5: sanitiseIdentifier() hanya
+     * memeriksa bentuk nama, dan `mysql`, `sys`, `information_schema`,
+     * `performance_schema` lolos karena semuanya huruf dan underscore.
+     * Server ini dipakai bersama 155 database; DROP `mysql` mematikan
+     * seluruhnya, dan GRANT pada `mysql` sama dengan memberi hak mengubah
+     * tabel akun (eskalasi ke superuser).
+     *
+     * Daftar tetap di sini selalu berlaku. Config `admin.protected_databases`
+     * hanya MENAMBAH (mis. database aplikasi inti), tidak dapat mengurangi,
+     * supaya salah ketik di config tidak membuka skema sistem.
+     */
+    public const SYSTEM_SCHEMAS = [
+        'mysql',
+        'sys',
+        'information_schema',
+        'performance_schema',
+    ];
+
+    /**
+     * Fungsi murni supaya dapat diuji tanpa koneksi. Perbandingan tanpa
+     * peka huruf besar: MySQL di Windows/macOS (lower_case_table_names)
+     * menganggap `MySQL` sama dengan `mysql`.
+     *
+     * @param  list<string>  $extra  daftar tambahan dari config
+     */
+    public static function isProtectedSchema(string $name, array $extra = []): bool
+    {
+        $protected = array_map(
+            static fn ($s) => strtolower(trim((string) $s)),
+            array_merge(self::SYSTEM_SCHEMAS, $extra),
+        );
+
+        return in_array(strtolower(trim($name)), $protected, true);
+    }
+
+    protected function assertNotProtectedSchema(string $name): void
+    {
+        $extra = (array) config('nawasara-database-monitor.admin.protected_databases', []);
+
+        if (self::isProtectedSchema($name, $extra)) {
+            throw new \InvalidArgumentException("Database '{$name}' adalah skema sistem atau dilindungi dan tidak boleh diubah dari sini.");
+        }
     }
 
     // -----------------------------------------------------------------
@@ -270,6 +319,10 @@ class MysqlAdmin
         $host = $this->sanitiseHostPattern($host);
         $database = $this->sanitiseIdentifier($database);
 
+        // GRANT pada `mysql` = hak mengubah tabel akun (audit keamanan
+        // 15 Oktober 2026, S5).
+        $this->assertNotProtectedSchema($database);
+
         $normalized = array_map(static fn ($p) => strtoupper(trim((string) $p)), $privileges);
 
         // Hard-deny dangerous tokens before allow-list check so that even
@@ -299,6 +352,7 @@ class MysqlAdmin
         $user = $this->sanitiseUsername($user);
         $host = $this->sanitiseHostPattern($host);
         $database = $this->sanitiseIdentifier($database);
+        $this->assertNotProtectedSchema($database);
 
         $this->connection()->statement("REVOKE ALL PRIVILEGES ON `{$database}`.* FROM `{$user}`@`{$host}`");
     }

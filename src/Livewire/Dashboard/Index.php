@@ -3,6 +3,7 @@
 namespace Nawasara\DatabaseMonitor\Livewire\Dashboard;
 
 use Livewire\Attributes\Computed;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Nawasara\DatabaseMonitor\Models\DbDatabase;
 use Nawasara\DatabaseMonitor\Models\DbServer;
@@ -15,14 +16,25 @@ class Index extends Component
     /** Show system databases (information_schema, mysql, sys, performance_schema). */
     public bool $showSystem = false;
 
-    /** Database name currently open in the detail modal (null = closed). */
+    /**
+     * Database name currently open in the detail modal (null = closed).
+     *
+     * #[Locked] bersama detailTopTables (audit keamanan 15 Oktober 2026):
+     * keduanya hanya diisi openDetail() di server.
+     */
+    #[Locked]
     public ?string $detailName = null;
 
     /** Top-tables result loaded lazily when the modal opens. */
+    #[Locked]
     public array $detailTopTables = [];
 
     public function syncNow(DbServerRepository $repository): void
     {
+        // Tombolnya sudah di balik @can, tetapi method publik Livewire dapat
+        // dipanggil langsung tanpa tombol (audit keamanan 15 Oktober 2026, R4).
+        $this->authorize('database-monitor.sync.execute');
+
         $repository->syncNow();
 
         $this->dispatch('toast', [
@@ -36,8 +48,24 @@ class Index extends Component
      * fly. Kept out of bulk sync because top-N is O(tables) and we'd
      * waste rows on databases nobody clicks on.
      */
-    public function openDetail(string $name): void
+    public function openDetail(int $id): void
     {
+        $this->authorize('database-monitor.view');
+
+        // Id inventori, bukan nama: nama database dari server yang dipantau
+        // bebas dipilih aplikasi OPD, dan dulu ditaruh mentah di dalam
+        // `wire:click="openDetail('...')"`, yang dievaluasi sebagai
+        // JavaScript (audit keamanan 15 Oktober 2026, S7). Id juga membatasi
+        // nama skema yang diteruskan ke topTables() pada database yang memang
+        // tercatat di server ini.
+        $database = $this->server?->databases()->whereKey($id)->first();
+
+        if (! $database) {
+            return;
+        }
+
+        $name = $database->name;
+
         $this->detailName = $name;
         $this->detailTopTables = [];
 
