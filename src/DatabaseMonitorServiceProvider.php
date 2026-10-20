@@ -32,6 +32,35 @@ class DatabaseMonitorServiceProvider extends ServiceProvider
         $this->registerLivewire();
         $this->registerSchedule();
         $this->registerAlertRules();
+        $this->registerPrune();
+    }
+
+    /**
+     * Penipisan riwayat ukuran harian (lihat PruneSnapshotsCommand).
+     *
+     * `$schedule->call()` + Artisan, bukan `$schedule->command()` (AGENTS.md
+     * §7); jam dinding Jakarta karena `app.timezone` bernilai UTC.
+     */
+    protected function registerPrune(): void
+    {
+        if (! $this->app->runningInConsole()) {
+            return;
+        }
+
+        $this->commands([\Nawasara\DatabaseMonitor\Console\PruneSnapshotsCommand::class]);
+
+        $this->app->booted(function () {
+            if (! config('nawasara-database-monitor.prune.enabled', true)) {
+                return;
+            }
+
+            $this->app->make(Schedule::class)
+                ->call(fn () => \Illuminate\Support\Facades\Artisan::call('nawasara-database-monitor:prune-snapshots'))
+                ->name('nawasara-database-monitor:prune-snapshots')
+                ->cron((string) config('nawasara-database-monitor.prune.cron', '50 3 * * *'))
+                ->timezone('Asia/Jakarta')
+                ->withoutOverlapping(60);
+        });
     }
 
     /**

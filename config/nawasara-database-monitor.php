@@ -92,4 +92,13 @@ return [
     'scheduler' => [
         'enabled' => env('DB_MONITOR_SCHEDULER_ENABLED', true),
     ],
+
+    // Penipisan riwayat ukuran (nawasara-database-monitor:prune-snapshots),
+    // jam Asia/Jakarta. Lebih tua dari keep_detail_days: satu snapshot per
+    // database per hari. 0 = tidak pernah ditipiskan.
+    'prune' => [
+        'enabled' => env('DB_MONITOR_PRUNE_ENABLED', true),
+        'cron' => env('DB_MONITOR_PRUNE_CRON', '50 3 * * *'),
+        'keep_detail_days' => (int) env('DB_MONITOR_PRUNE_KEEP_DETAIL_DAYS', 90),
+    ],
 ];
